@@ -15,7 +15,7 @@ A professional React Native app demonstrating screen brightness control using `e
 ## Installation
 
 ```bash
-npx expo install expo-brightness @react-native-community/slider @expo/vector-icons
+npx expo install expo-brightness @expo/vector-icons
 ```
 
 ## Usage
