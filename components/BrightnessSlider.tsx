@@ -7,6 +7,7 @@ interface BrightnessSliderProps {
   value: number;
   onValueChange: (value: number) => void;
   onSlidingComplete?: (value: number) => void;
+  onSlidingStart?: () => void;
   disabled?: boolean;
   label: string;
   icon: string;
@@ -16,6 +17,7 @@ export const BrightnessSlider: React.FC<BrightnessSliderProps> = ({
   value,
   onValueChange,
   onSlidingComplete,
+  onSlidingStart,
   disabled = false,
   label,
   icon,
@@ -37,6 +39,9 @@ export const BrightnessSlider: React.FC<BrightnessSliderProps> = ({
       onMoveShouldSetPanResponder: () => !disabled,
       onPanResponderGrant: (evt) => {
         if (disabled || sliderWidth === 0) return;
+        if (onSlidingStart) {
+          onSlidingStart();
+        }
         const locationX = evt.nativeEvent.locationX;
         const newValue = Math.max(0, Math.min(100, (locationX / sliderWidth) * 100));
         pan.setValue(newValue);

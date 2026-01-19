@@ -8,6 +8,7 @@ import {
   Platform,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import * as Brightness from 'expo-brightness';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
@@ -65,31 +66,77 @@ export default function App() {
     });
   };
 
-  const requestSystemPermission = async (): Promise<boolean> => {
+  const requestSystemPermission = async (showAlert: boolean = true): Promise<boolean> => {
     if (Platform.OS === 'android') {
-      const { status } = await Brightness.requestPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
-          'System brightness control requires permission. Please grant it in settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Open Settings',
-              onPress: () => {
-                if (Platform.OS === 'android') {
-                  Brightness.requestPermissionsAsync();
-                }
+      try {
+        const { status } = await Brightness.requestPermissionsAsync();
+        
+        if (status === 'granted') {
+          setHasPermission(true);
+          if (showAlert) {
+            Alert.alert('Success', 'Permission granted! You can now control system brightness.');
+          }
+          return true;
+        }
+        
+        if (status === 'denied' || status === 'undetermined') {
+          if (showAlert) {
+            Alert.alert(
+              'Permission Required',
+              'System brightness control requires special permission. You need to grant "Modify system settings" permission in your device settings.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Open Settings',
+                  onPress: async () => {
+                    try {
+                      if (Platform.OS === 'android') {
+                        await Linking.openSettings();
+                      }
+                    } catch (error) {
+                      console.error('Failed to open settings:', error);
+                      Alert.alert('Error', 'Could not open settings. Please manually enable "Modify system settings" for this app.');
+                    }
+                  },
+                },
+              ]
+            );
+          }
+          return false;
+        }
+        
+        return false;
+      } catch (error) {
+        console.error('Permission request error:', error);
+        if (showAlert) {
+          Alert.alert(
+            'Permission Error',
+            'Failed to request permission. On Android, you may need to manually enable "Modify system settings" permission in your device settings.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: async () => {
+                  try {
+                    await Linking.openSettings();
+                  } catch (err) {
+                    console.error('Failed to open settings:', err);
+                  }
+                },
               },
-            },
-          ]
-        );
+            ]
+          );
+        }
         return false;
       }
-      setHasPermission(true);
-      return true;
     }
+    setHasPermission(true);
     return true;
+  };
+
+  const handleRequestPermission = async () => {
+    await requestSystemPermission(true);
+    await loadBrightnessInfo();
   };
 
   const handleAppBrightnessChange = async (value: number) => {
@@ -171,20 +218,47 @@ export default function App() {
         <BrightnessSlider
           value={systemBrightness}
           onValueChange={handleSystemBrightnessChange}
+          onSlidingStart={async () => {
+            if (!hasPermission && Platform.OS === 'android') {
+              await requestSystemPermission(true);
+            }
+          }}
           label="System Brightness"
           icon="settings-brightness"
           disabled={!hasPermission && Platform.OS === 'android'}
         />
 
         {!hasPermission && Platform.OS === 'android' && (
-          <View style={styles.permissionWarning}>
-            <MaterialIcons name="warning" size={24} color={Colors.warning} />
-            <View style={styles.permissionTextContainer}>
-              <Text style={styles.permissionTitle}>Permission Required</Text>
-              <Text style={styles.permissionText}>
-                System brightness control requires permission. Tap the slider to request it.
-              </Text>
+          <View style={styles.permissionCard}>
+            <View style={styles.permissionHeader}>
+              <MaterialIcons name="lock" size={24} color={Colors.warning} />
+              <View style={styles.permissionTextContainer}>
+                <Text style={styles.permissionTitle}>Permission Required</Text>
+                <Text style={styles.permissionText}>
+                  To control system brightness, you need to grant "Modify system settings" permission.
+                </Text>
+              </View>
             </View>
+            <TouchableOpacity
+              style={styles.permissionButton}
+              onPress={handleRequestPermission}
+            >
+              <MaterialIcons name="settings" size={20} color={Colors.text} />
+              <Text style={styles.permissionButtonText}>Grant Permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.permissionButtonSecondary}
+              onPress={async () => {
+                try {
+                  await Linking.openSettings();
+                } catch (error) {
+                  Alert.alert('Error', 'Could not open settings');
+                }
+              }}
+            >
+              <MaterialIcons name="open-in-new" size={18} color={Colors.primary} />
+              <Text style={styles.permissionButtonTextSecondary}>Open Device Settings</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -288,30 +362,64 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
-  permissionWarning: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: `${Colors.warning}15`,
+  permissionCard: {
+    backgroundColor: Colors.surface,
     borderRadius: 16,
-    padding: 16,
+    padding: 20,
     marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.warning,
+  },
+  permissionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 16,
   },
   permissionTextContainer: {
     flex: 1,
   },
   permissionTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
-    color: Colors.warning,
-    marginBottom: 4,
+    color: Colors.text,
+    marginBottom: 6,
   },
   permissionText: {
     fontSize: 14,
     color: Colors.textSecondary,
     lineHeight: 20,
+  },
+  permissionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  permissionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+  },
+  permissionButtonSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+  },
+  permissionButtonTextSecondary: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.primary,
   },
   resetButton: {
     flexDirection: 'row',
